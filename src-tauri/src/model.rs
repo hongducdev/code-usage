@@ -77,6 +77,51 @@ pub struct Dashboard {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AppSettings {
+    pub pet_enabled: bool,
+    pub pet_auto_hide_ms: u64,
+    pub pet_scale: f64,
+    pub app_ui_scale: f64,
+    pub animations_enabled: bool,
+    pub privacy_mode: bool,
+    pub notifications_enabled: bool,
+    pub agent_notifications: bool,
+    pub smart_alerts_enabled: bool,
+    pub quota_threshold: u8,
+    pub launch_at_startup: bool,
+    pub check_updates_on_startup: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            pet_enabled: true,
+            pet_auto_hide_ms: 7_500,
+            pet_scale: 1.0,
+            app_ui_scale: 1.0,
+            animations_enabled: true,
+            privacy_mode: false,
+            notifications_enabled: true,
+            agent_notifications: true,
+            smart_alerts_enabled: true,
+            quota_threshold: 85,
+            launch_at_startup: false,
+            check_updates_on_startup: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatus {
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub available: bool,
+    pub release_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentActivity {
     pub id: String,

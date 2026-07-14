@@ -2,6 +2,7 @@ const invoke = window.__TAURI__.core.invoke;
 const win = window.__TAURI__.window.getCurrentWindow();
 let dashboard = { providers: [], refreshing: false, lastRefresh: null };
 let filter = "all";
+let appSettings = null;
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
@@ -141,9 +142,12 @@ async function refreshStartupProviders() {
 
 async function load() {
   try {
+    populateSettings(await invoke("get_app_settings"));
     dashboard = await invoke("get_dashboard");
     render();
+    evaluateQuotaAlerts();
     await refreshStartupProviders();
+    if (appSettings.checkUpdatesOnStartup) checkUpdates(false);
   } catch (error) {
     $("providerList").classList.remove("loading-state");
     $("providerList").setAttribute("aria-busy", "false");
@@ -152,18 +156,123 @@ async function load() {
     toast(String(error));
   }
 }
-async function refreshAll() { if (dashboard.refreshing) return; dashboard.refreshing = true; render(); try { dashboard = await invoke("refresh_all"); } catch (error) { toast(String(error)); } finally { dashboard.refreshing = false; render(); } }
-async function refreshProvider(id) { try { dashboard = await invoke("refresh_provider", { id }); render(); } catch (error) { toast(String(error)); } }
+async function refreshAll() { if (dashboard.refreshing) return; dashboard.refreshing = true; render(); try { dashboard = await invoke("refresh_all"); evaluateQuotaAlerts(); } catch (error) { toast(String(error)); } finally { dashboard.refreshing = false; render(); } }
+async function refreshProvider(id) { try { dashboard = await invoke("refresh_provider", { id }); render(); evaluateQuotaAlerts(dashboard.providers.filter((provider) => provider.id === id)); } catch (error) { toast(String(error)); } }
 function toast(message) { const element = $("toast"); element.textContent = message; element.classList.add("show"); setTimeout(() => element.classList.remove("show"), 2600); }
+
+function populateSettings(settings) {
+  appSettings = settings;
+  applyUiScale(settings.appUiScale);
+  for (const key of [
+    "petEnabled", "animationsEnabled", "privacyMode", "notificationsEnabled",
+    "agentNotifications", "smartAlertsEnabled", "launchAtStartup", "checkUpdatesOnStartup",
+  ]) $(key).checked = Boolean(settings[key]);
+  $("petAutoHide").value = String(settings.petAutoHideMs);
+  $("petScale").value = String(settings.petScale);
+  $("appUiScale").value = String(settings.appUiScale);
+  $("quotaThreshold").value = String(settings.quotaThreshold);
+}
+
+function applyUiScale(value) {
+  const scale = Math.min(1.2, Math.max(0.9, Number(value) || 1));
+  const root = document.documentElement;
+  root.style.setProperty("--app-ui-scale", String(scale));
+  root.style.setProperty("--app-ui-width", `${100 / scale}%`);
+  root.style.setProperty("--app-ui-height", `${100 / scale}dvh`);
+  root.style.setProperty("--app-shell-radius", `${16 / scale}px`);
+}
+
+function cancelSettings() {
+  applyUiScale(appSettings?.appUiScale ?? 1);
+  $("settingsDialog").close();
+}
+
+function collectSettings() {
+  return {
+    petEnabled: $("petEnabled").checked,
+    petAutoHideMs: Number($("petAutoHide").value),
+    petScale: Number($("petScale").value),
+    appUiScale: Number($("appUiScale").value),
+    animationsEnabled: $("animationsEnabled").checked,
+    privacyMode: $("privacyMode").checked,
+    notificationsEnabled: $("notificationsEnabled").checked,
+    agentNotifications: $("agentNotifications").checked,
+    smartAlertsEnabled: $("smartAlertsEnabled").checked,
+    quotaThreshold: Number($("quotaThreshold").value),
+    launchAtStartup: $("launchAtStartup").checked,
+    checkUpdatesOnStartup: $("checkUpdatesOnStartup").checked,
+  };
+}
+
+async function openSettings() {
+  try {
+    populateSettings(await invoke("get_app_settings"));
+    $("settingsDialog").showModal();
+  } catch (error) { toast(String(error)); }
+}
+
+async function saveSettings() {
+  try {
+    for (const [provider, input] of [["openrouter", $("openrouterKey")], ["zai", $("zaiKey")]]) {
+      if (input.value.trim()) dashboard = await invoke("save_api_key", { provider, value: input.value.trim() });
+    }
+    populateSettings(await invoke("save_app_settings", { settings: collectSettings() }));
+    $("settingsDialog").close();
+    render();
+    toast("Đã lưu cài đặt");
+  } catch (error) { toast(String(error)); }
+}
+
+async function checkUpdates(showFeedback = true) {
+  const button = $("checkUpdates");
+  button.disabled = true;
+  $("updateStatus").textContent = "Đang kiểm tra...";
+  try {
+    const update = await invoke("check_for_update");
+    $("currentVersion").textContent = `Phiên bản hiện tại: ${update.currentVersion}`;
+    if (update.available) {
+      $("updateStatus").textContent = `Có phiên bản ${update.latestVersion}`;
+      $("openRelease").hidden = false;
+      if (showFeedback) toast(`Đã có CodeUsage ${update.latestVersion}`);
+    } else {
+      $("updateStatus").textContent = update.latestVersion ? "Bạn đang dùng phiên bản mới nhất" : "Chưa có bản phát hành công khai";
+      $("openRelease").hidden = true;
+      if (showFeedback) toast("Bạn đang dùng phiên bản mới nhất");
+    }
+  } catch (error) {
+    $("updateStatus").textContent = "Không thể kiểm tra cập nhật";
+    if (showFeedback) toast(String(error));
+  } finally { button.disabled = false; }
+}
+
+function evaluateQuotaAlerts(providers = dashboard.providers) {
+  const alerts = providers.flatMap((provider) => provider.metrics
+    .filter((metric) => metric.unit === "%" && Number.isFinite(Number(metric.used)))
+    .map((metric) => invoke("notify_quota_alert", {
+      provider: provider.name,
+      metric: metric.label,
+      used: Number(metric.used),
+    })));
+  Promise.allSettled(alerts);
+}
 
 window.refreshAll = refreshAll;
 $("refreshButton").onclick = refreshAll;
 $("petToggleButton").onclick = () => invoke("toggle_pet_visibility");
 $("hideButton").onclick = () => win.hide();
-$("settingsButton").onclick = () => $("settingsDialog").showModal();
-$("closeSettings").onclick = () => $("settingsDialog").close();
+$("settingsButton").onclick = openSettings;
+$("closeSettings").onclick = cancelSettings;
+$("cancelSettings").onclick = cancelSettings;
+$("settingsDialog").addEventListener("cancel", () => applyUiScale(appSettings?.appUiScale ?? 1));
+$("saveSettings").onclick = saveSettings;
+$("testNotification").onclick = async () => {
+  try { await invoke("send_test_notification"); toast("Đã gửi thông báo thử"); }
+  catch (error) { toast(String(error)); }
+};
+$("checkUpdates").onclick = () => checkUpdates(true);
+$("openRelease").onclick = () => invoke("open_release_page");
+$("appUiScale").onchange = () => applyUiScale($("appUiScale").value);
 document.querySelectorAll("nav button").forEach((button) => button.onclick = () => { document.querySelector("nav .active").classList.remove("active"); button.classList.add("active"); filter = button.dataset.filter; render(); });
-$("saveKeys").onclick = async () => { try { for (const [provider, input] of [["openrouter", $("openrouterKey")], ["zai", $("zaiKey")]]) if (input.value.trim()) dashboard = await invoke("save_api_key", { provider, value: input.value.trim() }); $("settingsDialog").close(); render(); toast("Đã lưu API key an toàn"); } catch (error) { toast(String(error)); } };
 $("clearKeys").onclick = async () => { try { for (const provider of ["openrouter", "zai"]) dashboard = await invoke("save_api_key", { provider, value: "" }); render(); toast("Đã xóa API key"); } catch (error) { toast(String(error)); } };
 load();
 window.setInterval(refreshAll, 60_000);

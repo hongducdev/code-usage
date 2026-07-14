@@ -9,11 +9,12 @@
   <link rel="stylesheet" href="details.css" />
 </head>
 <body>
-  <header data-tauri-drag-region>
+  <div class="app-shell">
+    <header data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region><span class="logo" aria-hidden="true">C</span><span data-tauri-drag-region>CodeUsage</span></div>
     <div class="window-actions"><button id="petToggleButton" title="Hiện hoặc ẩn Agent Pet">Agent pet</button><button id="settingsButton" title="Cài đặt API key">Cài đặt</button><button id="hideButton" title="Ẩn cửa sổ">Ẩn</button></div>
-  </header>
-  <main>
+    </header>
+    <main>
     <section class="hero">
       <div><p class="eyebrow">Tổng quan sử dụng</p><h1>Quota của bạn,<br><span>trong một nhịp nhìn.</span></h1></div>
       <button id="refreshButton" class="refresh" aria-label="Làm mới tất cả" title="Làm mới tất cả"><span aria-hidden="true">↻</span></button>
@@ -25,13 +26,53 @@
       <div class="provider skeleton" aria-hidden="true"><i></i><span></span><small></small></div>
       <div class="provider skeleton" aria-hidden="true"><i></i><span></span><small></small></div>
     </section>
-  </main>
+    </main>
+  </div>
   <dialog id="settingsDialog">
-    <div class="dialog-head"><div><p class="eyebrow">Kho thông tin bảo mật</p><h2>API keys</h2></div><button id="closeSettings" aria-label="Đóng">×</button></div>
-    <p class="muted">Key được lưu trong kho mật khẩu của hệ điều hành, không ghi vào project.</p>
-    <label>OpenRouter <input id="openrouterKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" /></label>
-    <label>Z.ai <input id="zaiKey" type="password" placeholder="API key" autocomplete="off" /></label>
-    <div class="dialog-actions"><button id="clearKeys" class="ghost">Xóa key</button><button id="saveKeys" class="primary">Lưu an toàn</button></div>
+    <div class="dialog-head"><div><p class="eyebrow">Tùy chỉnh ứng dụng</p><h2>Cài đặt</h2></div><button id="closeSettings" aria-label="Đóng">×</button></div>
+    <div class="settings-scroll">
+      <section class="settings-section">
+        <h3>Giao diện</h3>
+        <label>Kích thước nội dung<select id="appUiScale"><option value="0.9">Nhỏ - 90%</option><option value="1">Mặc định - 100%</option><option value="1.1">Lớn - 110%</option><option value="1.2">Rất lớn - 120%</option></select></label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Agent Pet</h3>
+        <label class="setting-row"><span><strong>Hiển thị pet</strong><small>Luôn theo dõi hoạt động agent trên màn hình.</small></span><input id="petEnabled" type="checkbox" /></label>
+        <label class="setting-row"><span><strong>Chuyển động</strong><small>Tắt để pet dùng trạng thái tĩnh.</small></span><input id="animationsEnabled" type="checkbox" /></label>
+        <label class="setting-row"><span><strong>Chế độ riêng tư</strong><small>Ẩn workspace và nội dung trong bubble.</small></span><input id="privacyMode" type="checkbox" /></label>
+        <div class="setting-grid">
+          <label>Thời gian tự ẩn<select id="petAutoHide"><option value="3000">3 giây</option><option value="5000">5 giây</option><option value="7500">7,5 giây</option><option value="10000">10 giây</option><option value="15000">15 giây</option></select></label>
+          <label>Kích thước pet<select id="petScale"><option value="0.85">Nhỏ</option><option value="1">Vừa</option><option value="1.2">Lớn</option></select></label>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3>Thông báo và cảnh báo</h3>
+        <label class="setting-row"><span><strong>Thông báo Windows</strong><small>Cho phép CodeUsage gửi cảnh báo hệ thống.</small></span><input id="notificationsEnabled" type="checkbox" /></label>
+        <label class="setting-row"><span><strong>Hoạt động agent</strong><small>Báo khi hoàn thành, cần nhập liệu hoặc gặp lỗi.</small></span><input id="agentNotifications" type="checkbox" /></label>
+        <label class="setting-row"><span><strong>Cảnh báo quota thông minh</strong><small>Chỉ báo một lần ở mỗi mức và tự reset theo quota.</small></span><input id="smartAlertsEnabled" type="checkbox" /></label>
+        <label>Ngưỡng cảnh báo đầu tiên<select id="quotaThreshold"><option value="70">70% đã dùng</option><option value="80">80% đã dùng</option><option value="85">85% đã dùng</option><option value="90">90% đã dùng</option><option value="95">95% đã dùng</option></select></label>
+        <button id="testNotification" class="inline-action" type="button">Gửi thông báo thử</button>
+      </section>
+
+      <section class="settings-section">
+        <h3>Hệ thống và cập nhật</h3>
+        <label class="setting-row"><span><strong>Chạy cùng Windows</strong><small>Khởi động CodeUsage trong system tray.</small></span><input id="launchAtStartup" type="checkbox" /></label>
+        <label class="setting-row"><span><strong>Tự kiểm tra cập nhật</strong><small>Kiểm tra GitHub Releases khi mở ứng dụng.</small></span><input id="checkUpdatesOnStartup" type="checkbox" /></label>
+        <div class="update-row"><span><strong id="currentVersion">Phiên bản 0.1.1</strong><small id="updateStatus">Chưa kiểm tra cập nhật.</small></span><button id="checkUpdates" class="inline-action" type="button">Kiểm tra</button></div>
+        <button id="openRelease" class="release-action" type="button" hidden>Mở trang tải bản mới</button>
+      </section>
+
+      <section class="settings-section">
+        <h3>API keys</h3>
+        <p class="muted">Key được lưu trong kho mật khẩu của hệ điều hành, không ghi vào project.</p>
+        <label>OpenRouter <input id="openrouterKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" /></label>
+        <label>Z.ai <input id="zaiKey" type="password" placeholder="API key" autocomplete="off" /></label>
+        <button id="clearKeys" class="inline-action danger-action" type="button">Xóa API keys</button>
+      </section>
+    </div>
+    <div class="dialog-actions"><button id="cancelSettings" class="ghost">Hủy</button><button id="saveSettings" class="primary">Lưu cài đặt</button></div>
   </dialog>
   <div id="toast" role="status"></div>
   <script src="app.js"></script>

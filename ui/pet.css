@@ -56,4 +56,8 @@
 /* Claude is the only rendered pet. Keep its silhouette flat with no shadow. */
 .claude-pet{display:grid;filter:none}
 .pet-shadow,.codex-pet{display:none!important}
+.pet{transform:scale(var(--pet-scale,1));transform-origin:center bottom}
+.pet-app[data-animations="off"] .claude-pet,
+.pet-app[data-animations="off"] .approval-mark,
+.pet-app[data-animations="off"] .pet-ear{animation:none!important}
 .activity-bubble:after{display:none}

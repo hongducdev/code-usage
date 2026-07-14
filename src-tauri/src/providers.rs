@@ -795,10 +795,16 @@ fn command_exists(name: &str) -> bool {
 }
 
 fn silent_command(program: &str) -> Command {
-    let mut command = Command::new(program);
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
-    command
+    {
+        let mut command = Command::new(program);
+        command.creation_flags(0x0800_0000);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new(program)
+    }
 }
 
 fn vscdb_value(db_path: &PathBuf, key: &str) -> Option<String> {

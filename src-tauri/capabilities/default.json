@@ -3,5 +3,13 @@
   "identifier": "default",
   "description": "Main window capability",
   "windows": ["main", "pet"],
-  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-hide"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-hide",
+    "notification:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
+  ]
 }

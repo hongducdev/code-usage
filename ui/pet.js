@@ -4,7 +4,6 @@ const app = document.getElementById("petApp");
 const bubble = document.getElementById("activityBubble");
 const petButton = document.getElementById("petButton");
 
-const AUTO_HIDE_MS = 7_500;
 const BUBBLE_TRANSITION_MS = 240;
 const priority = { needs_approval: 0, error: 1, completed: 2, waiting: 3, working: 4 };
 const labels = {
@@ -24,6 +23,8 @@ let hideTimer = null;
 let dragCandidate = null;
 let dragging = false;
 let transitionVersion = 0;
+let autoHideMs = 7_500;
+let petSettings = { animationsEnabled: true, privacyMode: false, petScale: 1 };
 
 const isActive = (agent) => ["working", "needs_approval", "waiting"].includes(agent.status);
 const fingerprint = (agent) => agent.status === "working"
@@ -71,16 +72,33 @@ function render() {
 
   bubble.dataset.status = featured.status;
   document.getElementById("bubbleLogo").src = `logos/${featured.provider}.svg`;
-  document.getElementById("bubbleWorkspace").textContent = featured.workspace;
+  document.getElementById("bubbleWorkspace").textContent = petSettings.privacyMode ? "Agent" : featured.workspace;
   document.getElementById("bubbleStatus").textContent = labels[featured.status] || featured.status;
-  document.getElementById("bubbleMessage").textContent = featured.message;
+  document.getElementById("bubbleMessage").textContent = petSettings.privacyMode
+    ? (featured.status === "needs_approval" ? "Có tác vụ cần bạn xử lý." : "Agent vừa cập nhật trạng thái.")
+    : featured.message;
   document.getElementById("bubbleProgress").style.transform = `scaleX(${Math.max(0, Math.min(100, featured.progress)) / 100})`;
 }
 
 function scheduleHide() {
   clearTimeout(hideTimer);
-  hideTimer = window.setTimeout(() => setExpanded(false), AUTO_HIDE_MS);
+  hideTimer = window.setTimeout(() => setExpanded(false), autoHideMs);
 }
+
+async function applySettings() {
+  try {
+    petSettings = await invoke("get_app_settings");
+    autoHideMs = petSettings.petAutoHideMs;
+    app.dataset.animations = petSettings.animationsEnabled ? "on" : "off";
+    app.style.setProperty("--pet-scale", String(petSettings.petScale));
+    render();
+    if (expanded) scheduleHide();
+  } catch (error) {
+    console.error("Không thể tải cài đặt pet", error);
+  }
+}
+
+window.applySettings = applySettings;
 
 async function setExpanded(next, agent = null) {
   if (agent) selectedAgentId = agent.id;
@@ -129,6 +147,12 @@ async function refresh() {
 
     if (initialized && changed.length) {
       await setExpanded(true, changed[0]);
+      const notable = changed.filter((agent) => ["needs_approval", "completed", "error"].includes(agent.status));
+      Promise.allSettled(notable.map((agent) => invoke("notify_agent_event", {
+        workspace: agent.workspace,
+        status: agent.status,
+        message: agent.message,
+      })));
     }
 
     previousFingerprints = new Map(nextAgents.map((agent) => [agent.id, fingerprint(agent)]));
@@ -181,5 +205,5 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") setExpanded(false);
 });
 
-refresh();
+applySettings().then(refresh);
 window.setInterval(refresh, 2_500);
