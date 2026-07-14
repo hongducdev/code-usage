@@ -85,10 +85,9 @@ pub struct AppSettings {
     pub app_ui_scale: f64,
     pub animations_enabled: bool,
     pub privacy_mode: bool,
-    pub notifications_enabled: bool,
-    pub agent_notifications: bool,
     pub smart_alerts_enabled: bool,
     pub quota_threshold: u8,
+    pub menu_bar_providers: Vec<String>,
     pub launch_at_startup: bool,
     pub check_updates_on_startup: bool,
 }
@@ -102,10 +101,9 @@ impl Default for AppSettings {
             app_ui_scale: 1.0,
             animations_enabled: true,
             privacy_mode: false,
-            notifications_enabled: true,
-            agent_notifications: true,
             smart_alerts_enabled: true,
             quota_threshold: 85,
+            menu_bar_providers: Vec::new(),
             launch_at_startup: false,
             check_updates_on_startup: true,
         }
@@ -141,6 +139,7 @@ pub enum AgentActivityStatus {
     Waiting,
     Completed,
     Error,
+    QuotaWarning,
 }
 
 impl Metric {

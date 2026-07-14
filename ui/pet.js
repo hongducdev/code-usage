@@ -5,8 +5,9 @@ const bubble = document.getElementById("activityBubble");
 const petButton = document.getElementById("petButton");
 
 const BUBBLE_TRANSITION_MS = 240;
-const priority = { needs_approval: 0, error: 1, completed: 2, waiting: 3, working: 4 };
+const priority = { quota_warning: 0, needs_approval: 1, error: 2, completed: 3, waiting: 4, working: 5 };
 const labels = {
+  quota_warning: "Cảnh báo quota",
   working: "Đang chạy",
   needs_approval: "Cần bạn xử lý",
   waiting: "Đang chờ",
@@ -25,6 +26,7 @@ let dragging = false;
 let transitionVersion = 0;
 let autoHideMs = 7_500;
 let petSettings = { animationsEnabled: true, privacyMode: false, petScale: 1 };
+let retainedAlerts = [];
 
 const isActive = (agent) => ["working", "needs_approval", "waiting"].includes(agent.status);
 const fingerprint = (agent) => agent.status === "working"
@@ -46,9 +48,10 @@ function render() {
   const active = agents.filter(isActive);
   const approval = active.filter((agent) => agent.status === "needs_approval");
   const featured = selectedAgent();
+  const quotaWarning = featured?.status === "quota_warning";
 
   app.dataset.provider = "claude";
-  app.dataset.mode = approval.length
+  app.dataset.mode = approval.length || quotaWarning
     ? "approval"
     : active.some((agent) => agent.status === "working")
       ? "working"
@@ -75,7 +78,7 @@ function render() {
   document.getElementById("bubbleWorkspace").textContent = petSettings.privacyMode ? "Agent" : featured.workspace;
   document.getElementById("bubbleStatus").textContent = labels[featured.status] || featured.status;
   document.getElementById("bubbleMessage").textContent = petSettings.privacyMode
-    ? (featured.status === "needs_approval" ? "Có tác vụ cần bạn xử lý." : "Agent vừa cập nhật trạng thái.")
+    ? (featured.status === "needs_approval" || featured.status === "quota_warning" ? "Có cập nhật cần bạn chú ý." : "Agent vừa cập nhật trạng thái.")
     : featured.message;
   document.getElementById("bubbleProgress").style.transform = `scaleX(${Math.max(0, Math.min(100, featured.progress)) / 100})`;
 }
@@ -137,7 +140,17 @@ async function setExpanded(next, agent = null) {
 
 async function refresh() {
   try {
-    const nextAgents = await invoke("get_agent_activity");
+    const [scannedAgents, incomingAlerts] = await Promise.all([
+      invoke("get_agent_activity"),
+      invoke("take_pet_alerts"),
+    ]);
+    const cutoff = Date.now() - autoHideMs - 2_500;
+    const incomingIds = new Set(incomingAlerts.map((alert) => alert.id));
+    retainedAlerts = [
+      ...incomingAlerts,
+      ...retainedAlerts.filter((alert) => !incomingIds.has(alert.id) && new Date(alert.updatedAt).getTime() >= cutoff),
+    ];
+    const nextAgents = [...retainedAlerts, ...scannedAgents];
     const changed = nextAgents
       .filter((agent) => previousFingerprints.get(agent.id) !== fingerprint(agent))
       .sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
@@ -145,14 +158,8 @@ async function refresh() {
     agents = nextAgents;
     render();
 
-    if (initialized && changed.length) {
-      await setExpanded(true, changed[0]);
-      const notable = changed.filter((agent) => ["needs_approval", "completed", "error"].includes(agent.status));
-      Promise.allSettled(notable.map((agent) => invoke("notify_agent_event", {
-        workspace: agent.workspace,
-        status: agent.status,
-        message: agent.message,
-      })));
+    if (incomingAlerts.length || (initialized && changed.length)) {
+      await setExpanded(true, incomingAlerts[0] || changed[0]);
     }
 
     previousFingerprints = new Map(nextAgents.map((agent) => [agent.id, fingerprint(agent)]));

@@ -49,11 +49,15 @@
 
       <section class="settings-section">
         <h3>Thông báo và cảnh báo</h3>
-        <label class="setting-row"><span><strong>Thông báo Windows</strong><small>Cho phép CodeUsage gửi cảnh báo hệ thống.</small></span><input id="notificationsEnabled" type="checkbox" /></label>
-        <label class="setting-row"><span><strong>Hoạt động agent</strong><small>Báo khi hoàn thành, cần nhập liệu hoặc gặp lỗi.</small></span><input id="agentNotifications" type="checkbox" /></label>
-        <label class="setting-row"><span><strong>Cảnh báo quota thông minh</strong><small>Chỉ báo một lần ở mỗi mức và tự reset theo quota.</small></span><input id="smartAlertsEnabled" type="checkbox" /></label>
+        <label class="setting-row"><span><strong>Cảnh báo quota trong Pet</strong><small>Hiện trong bubble một lần ở mỗi mức và tự reset theo quota.</small></span><input id="smartAlertsEnabled" type="checkbox" /></label>
         <label>Ngưỡng cảnh báo đầu tiên<select id="quotaThreshold"><option value="70">70% đã dùng</option><option value="80">80% đã dùng</option><option value="85">85% đã dùng</option><option value="90">90% đã dùng</option><option value="95">95% đã dùng</option></select></label>
-        <button id="testNotification" class="inline-action" type="button">Gửi thông báo thử</button>
+      </section>
+
+      <section class="settings-section">
+        <h3>macOS menu bar</h3>
+        <p class="muted">Ghim tối đa 3 agent. Dòng trên hiển thị Weekly, dòng dưới hiển thị Daily; Cursor dùng Auto và API.</p>
+        <div id="menuBarProviders" class="provider-picker"></div>
+        <small id="menuBarProviderCount" class="selection-count">Đã chọn 0/3</small>
       </section>
 
       <section class="settings-section">

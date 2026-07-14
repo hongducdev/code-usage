@@ -4,7 +4,10 @@ mod model;
 mod providers;
 mod scanner;
 
-use model::{AgentActivity, AppSettings, Dashboard, UpdateStatus};
+use model::{
+    AgentActivity, AgentActivityStatus, AppSettings, Dashboard, Metric, ProviderSnapshot,
+    UpdateStatus,
+};
 use reqwest::Client;
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::PathBuf, process::Command, sync::Mutex};
@@ -15,7 +18,6 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
-use tauri_plugin_notification::NotificationExt;
 
 const PET_COLLAPSED_WIDTH: u32 = 116;
 const PET_COLLAPSED_HEIGHT: u32 = 132;
@@ -26,6 +28,7 @@ struct AppState {
     dashboard: Mutex<Dashboard>,
     settings: Mutex<AppSettings>,
     quota_alert_levels: Mutex<HashMap<String, u8>>,
+    pet_alerts: Mutex<Vec<AgentActivity>>,
     client: Client,
 }
 
@@ -88,6 +91,26 @@ fn save_app_settings(
     settings.pet_scale = settings.pet_scale.clamp(0.85, 1.2);
     settings.app_ui_scale = settings.app_ui_scale.clamp(0.9, 1.2);
     settings.quota_threshold = settings.quota_threshold.clamp(50, 95);
+    let dashboard = state
+        .dashboard
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    let mut selected = Vec::new();
+    for provider_id in std::mem::take(&mut settings.menu_bar_providers) {
+        if selected.len() == 3 {
+            break;
+        }
+        if dashboard
+            .providers
+            .iter()
+            .any(|provider| provider.id == provider_id)
+            && !selected.contains(&provider_id)
+        {
+            selected.push(provider_id);
+        }
+    }
+    settings.menu_bar_providers = selected;
 
     let autostart = app.autolaunch();
     let currently_enabled = autostart.is_enabled().unwrap_or(false);
@@ -111,51 +134,8 @@ fn save_app_settings(
         }
         let _ = pet.eval("window.applySettings && window.applySettings()");
     }
+    sync_menu_bar_items(&app, &dashboard, &settings)?;
     Ok(settings)
-}
-
-fn send_native_notification(app: &tauri::AppHandle, title: &str, body: &str) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn send_test_notification(app: tauri::AppHandle) -> Result<(), String> {
-    send_native_notification(&app, "CodeUsage", "Thông báo đang hoạt động bình thường.")
-}
-
-#[tauri::command]
-fn notify_agent_event(
-    workspace: String,
-    status: String,
-    message: String,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let settings = state
-        .settings
-        .lock()
-        .map_err(|error| error.to_string())?
-        .clone();
-    if !settings.notifications_enabled || !settings.agent_notifications {
-        return Ok(());
-    }
-    let title = match status.as_str() {
-        "needs_approval" => "Agent cần bạn xử lý",
-        "completed" => "Agent đã hoàn thành",
-        "error" => "Agent bị gián đoạn",
-        _ => return Ok(()),
-    };
-    let body = if settings.privacy_mode {
-        "Mở CodeUsage để xem chi tiết.".to_owned()
-    } else {
-        format!("{workspace}: {message}")
-    };
-    send_native_notification(&app, title, &body)
 }
 
 fn smart_alert_level(used: f64, threshold: u8) -> Option<u8> {
@@ -171,7 +151,6 @@ fn notify_quota_alert(
     provider: String,
     metric: String,
     used: f64,
-    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let settings = state
@@ -188,7 +167,7 @@ fn notify_quota_alert(
             .remove(&key);
         return Ok(());
     };
-    if !settings.notifications_enabled || !settings.smart_alerts_enabled {
+    if !settings.smart_alerts_enabled {
         return Ok(());
     }
 
@@ -202,11 +181,26 @@ fn notify_quota_alert(
     levels.insert(key, level);
     drop(levels);
     let remaining = (100.0 - used).clamp(0.0, 100.0).round();
-    send_native_notification(
-        &app,
-        &format!("{provider} sắp hết quota"),
-        &format!("{metric}: đã dùng {}%, còn {remaining}%.", used.round()),
-    )
+    state
+        .pet_alerts
+        .lock()
+        .map_err(|error| error.to_string())?
+        .push(AgentActivity {
+            id: format!("quota:{provider}:{metric}:{level}"),
+            provider: "codex".to_owned(),
+            workspace: provider,
+            status: AgentActivityStatus::QuotaWarning,
+            progress: used.clamp(0.0, 100.0).round() as u8,
+            message: format!("{metric}: đã dùng {}%, còn {remaining}%.", used.round()),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        });
+    Ok(())
+}
+
+#[tauri::command]
+fn take_pet_alerts(state: State<'_, AppState>) -> Result<Vec<AgentActivity>, String> {
+    let mut alerts = state.pet_alerts.lock().map_err(|error| error.to_string())?;
+    Ok(std::mem::take(&mut *alerts))
 }
 
 fn version_parts(value: &str) -> [u32; 3] {
@@ -287,7 +281,10 @@ fn open_release_page() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn refresh_all(state: State<'_, AppState>) -> Result<Dashboard, String> {
+async fn refresh_all(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Dashboard, String> {
     let snapshots = {
         let mut d = state.dashboard.lock().map_err(|e| e.to_string())?;
         d.refreshing = true;
@@ -306,15 +303,28 @@ async fn refresh_all(state: State<'_, AppState>) -> Result<Dashboard, String> {
         slots[index] = Some(snapshot);
     }
     let refreshed = slots.into_iter().flatten().collect();
-    let mut d = state.dashboard.lock().map_err(|e| e.to_string())?;
-    d.providers = refreshed;
-    d.refreshing = false;
-    d.last_refresh = Some(chrono::Utc::now().to_rfc3339());
-    Ok(d.clone())
+    let dashboard = {
+        let mut d = state.dashboard.lock().map_err(|e| e.to_string())?;
+        d.providers = refreshed;
+        d.refreshing = false;
+        d.last_refresh = Some(chrono::Utc::now().to_rfc3339());
+        d.clone()
+    };
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    sync_menu_bar_items(&app, &dashboard, &settings)?;
+    Ok(dashboard)
 }
 
 #[tauri::command]
-async fn refresh_provider(id: String, state: State<'_, AppState>) -> Result<Dashboard, String> {
+async fn refresh_provider(
+    id: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Dashboard, String> {
     let snapshot = {
         let d = state.dashboard.lock().map_err(|e| e.to_string())?;
         d.providers
@@ -324,12 +334,21 @@ async fn refresh_provider(id: String, state: State<'_, AppState>) -> Result<Dash
             .ok_or("Provider không tồn tại")?
     };
     let refreshed = providers::refresh(snapshot, &state.client).await;
-    let mut d = state.dashboard.lock().map_err(|e| e.to_string())?;
-    if let Some(slot) = d.providers.iter_mut().find(|p| p.id == id) {
-        *slot = refreshed;
-    }
-    d.last_refresh = Some(chrono::Utc::now().to_rfc3339());
-    Ok(d.clone())
+    let dashboard = {
+        let mut d = state.dashboard.lock().map_err(|e| e.to_string())?;
+        if let Some(slot) = d.providers.iter_mut().find(|p| p.id == id) {
+            *slot = refreshed;
+        }
+        d.last_refresh = Some(chrono::Utc::now().to_rfc3339());
+        d.clone()
+    };
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    sync_menu_bar_items(&app, &dashboard, &settings)?;
+    Ok(dashboard)
 }
 
 #[tauri::command]
@@ -481,6 +500,158 @@ fn tray_image() -> Image<'static> {
     Image::new_owned(rgba, 32, 32)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn provider_tray_icon(provider: &str) -> Result<Image<'static>, String> {
+    let bytes: &'static [u8] = match provider {
+        "antigravity" => include_bytes!("../icons/providers/antigravity.rgba"),
+        "claude" => include_bytes!("../icons/providers/claude.rgba"),
+        "codex" => include_bytes!("../icons/providers/codex.rgba"),
+        "copilot" => include_bytes!("../icons/providers/copilot.rgba"),
+        "cursor" => include_bytes!("../icons/providers/cursor.rgba"),
+        "devin" => include_bytes!("../icons/providers/devin.rgba"),
+        "grok" => include_bytes!("../icons/providers/grok.rgba"),
+        "opencode" => include_bytes!("../icons/providers/opencode.rgba"),
+        "openrouter" => include_bytes!("../icons/providers/openrouter.rgba"),
+        "openusage" => include_bytes!("../icons/providers/openusage.rgba"),
+        "zai" => include_bytes!("../icons/providers/zai.rgba"),
+        _ => return Ok(tray_image()),
+    };
+    Ok(Image::new(bytes, 32, 32))
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn remaining_percent(metric: &Metric) -> Option<u8> {
+    (metric.unit == "%")
+        .then_some(metric.used?)
+        .map(|used| (100.0 - used).clamp(0.0, 100.0).round() as u8)
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn menu_bar_limits(provider: &ProviderSnapshot) -> [(String, Option<u8>); 2] {
+    let percentages: Vec<&Metric> = provider
+        .metrics
+        .iter()
+        .filter(|metric| metric.unit == "%" && metric.used.is_some())
+        .collect();
+    let find = |terms: &[&str]| {
+        percentages.iter().copied().find(|metric| {
+            let label = metric.label.to_ascii_lowercase();
+            terms.iter().any(|term| label.contains(term))
+        })
+    };
+    let (top_label, top, bottom_label, bottom) = if provider.id == "cursor" {
+        ("Auto", find(&["auto", "composer"]), "API", find(&["api"]))
+    } else {
+        (
+            "Weekly",
+            find(&["weekly", "week", "seven_day"]),
+            "Daily",
+            find(&["daily", "session", "five_hour"]),
+        )
+    };
+    let top = top.or_else(|| percentages.first().copied());
+    let bottom = bottom.or_else(|| {
+        percentages
+            .iter()
+            .copied()
+            .find(|metric| top.is_none_or(|selected| selected.id != metric.id))
+    });
+    [
+        (top_label.to_owned(), top.and_then(remaining_percent)),
+        (bottom_label.to_owned(), bottom.and_then(remaining_percent)),
+    ]
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn build_menu_bar_items(
+    app: &tauri::AppHandle,
+    dashboard: &Dashboard,
+    settings: &AppSettings,
+) -> Result<(), String> {
+    for slot in 0..3 {
+        let tray_id = format!("provider-limit-{slot}");
+        let Some(provider_id) = settings.menu_bar_providers.get(slot) else {
+            let _ = app.remove_tray_by_id(&tray_id);
+            continue;
+        };
+        let Some(provider) = dashboard
+            .providers
+            .iter()
+            .find(|item| &item.id == provider_id)
+        else {
+            let _ = app.remove_tray_by_id(&tray_id);
+            continue;
+        };
+        let limits = menu_bar_limits(provider);
+        let title = limits
+            .iter()
+            .map(|(_, value)| value.map_or_else(|| "--".to_owned(), |value| format!("{value}%")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let tooltip = format!(
+            "{}\n{}: {} còn lại\n{}: {} còn lại",
+            provider.name,
+            limits[0].0,
+            limits[0]
+                .1
+                .map_or_else(|| "--".to_owned(), |value| format!("{value}%")),
+            limits[1].0,
+            limits[1]
+                .1
+                .map_or_else(|| "--".to_owned(), |value| format!("{value}%")),
+        );
+        let icon = provider_tray_icon(provider_id)?;
+        if let Some(tray) = app.tray_by_id(&tray_id) {
+            tray.set_icon(Some(icon))
+                .map_err(|error| error.to_string())?;
+            tray.set_title(Some(&title))
+                .map_err(|error| error.to_string())?;
+            tray.set_tooltip(Some(&tooltip))
+                .map_err(|error| error.to_string())?;
+        } else {
+            TrayIconBuilder::with_id(tray_id.clone())
+                .icon(icon)
+                .icon_as_template(true)
+                .title(&title)
+                .tooltip(&tooltip)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if matches!(
+                        event,
+                        tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            ..
+                        }
+                    ) {
+                        toggle_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn sync_menu_bar_items(
+    app: &tauri::AppHandle,
+    dashboard: &Dashboard,
+    settings: &AppSettings,
+) -> Result<(), String> {
+    build_menu_bar_items(app, dashboard, settings)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn sync_menu_bar_items(
+    _app: &tauri::AppHandle,
+    _dashboard: &Dashboard,
+    _settings: &AppSettings,
+) -> Result<(), String> {
+    Ok(())
+}
+
 fn toggle_main_window(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -496,7 +667,6 @@ fn toggle_main_window(app: &tauri::AppHandle) {
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
@@ -509,6 +679,7 @@ fn main() {
             }),
             settings: Mutex::new(load_settings()),
             quota_alert_levels: Mutex::new(HashMap::new()),
+            pet_alerts: Mutex::new(Vec::new()),
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
                 .build()
@@ -518,9 +689,8 @@ fn main() {
             get_dashboard,
             get_app_settings,
             save_app_settings,
-            send_test_notification,
-            notify_agent_event,
             notify_quota_alert,
+            take_pet_alerts,
             check_for_update,
             open_release_page,
             refresh_all,
@@ -584,6 +754,25 @@ fn main() {
                     }
                 })
                 .build(app)?;
+            {
+                let state = app.state::<AppState>();
+                let dashboard = state
+                    .dashboard
+                    .lock()
+                    .map(|value| value.clone())
+                    .unwrap_or_else(|_| Dashboard {
+                        providers: Vec::new(),
+                        last_refresh: None,
+                        refreshing: false,
+                    });
+                let settings = state
+                    .settings
+                    .lock()
+                    .map(|value| value.clone())
+                    .unwrap_or_default();
+                sync_menu_bar_items(app.handle(), &dashboard, &settings)
+                    .map_err(std::io::Error::other)?;
+            }
             if let Some(pet) = app.get_webview_window("pet") {
                 let settings = app
                     .state::<AppState>()
@@ -621,7 +810,27 @@ fn main() {
 
 #[cfg(test)]
 mod settings_tests {
-    use super::{smart_alert_level, version_parts};
+    use super::{menu_bar_limits, smart_alert_level, version_parts};
+    use crate::model::{LocalPresence, Metric, ProviderSnapshot, ProviderStatus};
+
+    fn percent_metric(id: &str, label: &str, used: f64) -> Metric {
+        Metric::percent(id, label, used, None)
+    }
+
+    fn provider(id: &str, metrics: Vec<Metric>) -> ProviderSnapshot {
+        ProviderSnapshot {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            color: String::new(),
+            status: ProviderStatus::Ready,
+            plan: None,
+            metrics,
+            message: None,
+            refreshed_at: None,
+            experimental: false,
+            local: LocalPresence::default(),
+        }
+    }
 
     #[test]
     fn smart_alerts_respect_configured_threshold_and_escalate() {
@@ -636,5 +845,38 @@ mod settings_tests {
     fn versions_are_compared_numerically() {
         assert!(version_parts("v0.1.10") > version_parts("0.1.2"));
         assert_eq!(version_parts("0.1.1-beta.1"), [0, 1, 1]);
+    }
+
+    #[test]
+    fn menu_bar_orders_weekly_above_daily_and_shows_remaining() {
+        let limits = menu_bar_limits(&provider(
+            "claude",
+            vec![
+                percent_metric("session", "Session", 64.0),
+                percent_metric("weekly", "Weekly", 0.0),
+            ],
+        ));
+        assert_eq!(
+            limits,
+            [
+                ("Weekly".to_owned(), Some(100)),
+                ("Daily".to_owned(), Some(36))
+            ]
+        );
+    }
+
+    #[test]
+    fn menu_bar_uses_cursor_auto_and_api_order() {
+        let limits = menu_bar_limits(&provider(
+            "cursor",
+            vec![
+                percent_metric("api", "API", 100.0),
+                percent_metric("auto", "Auto + Composer", 7.0),
+            ],
+        ));
+        assert_eq!(
+            limits,
+            [("Auto".to_owned(), Some(93)), ("API".to_owned(), Some(0))]
+        );
     }
 }

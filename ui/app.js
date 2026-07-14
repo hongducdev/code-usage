@@ -164,13 +164,39 @@ function populateSettings(settings) {
   appSettings = settings;
   applyUiScale(settings.appUiScale);
   for (const key of [
-    "petEnabled", "animationsEnabled", "privacyMode", "notificationsEnabled",
-    "agentNotifications", "smartAlertsEnabled", "launchAtStartup", "checkUpdatesOnStartup",
+    "petEnabled", "animationsEnabled", "privacyMode", "smartAlertsEnabled",
+    "launchAtStartup", "checkUpdatesOnStartup",
   ]) $(key).checked = Boolean(settings[key]);
   $("petAutoHide").value = String(settings.petAutoHideMs);
   $("petScale").value = String(settings.petScale);
   $("appUiScale").value = String(settings.appUiScale);
   $("quotaThreshold").value = String(settings.quotaThreshold);
+  renderMenuBarProviders(settings.menuBarProviders || []);
+}
+
+function renderMenuBarProviders(selected) {
+  const selectedIds = new Set(selected);
+  $("menuBarProviders").innerHTML = dashboard.providers.map((provider) => `
+    <label class="provider-choice">
+      <input type="checkbox" value="${escapeHtml(provider.id)}" ${selectedIds.has(provider.id) ? "checked" : ""}>
+      <img src="logos/${escapeHtml(provider.id)}.svg" alt="">
+      <span>${escapeHtml(provider.name)}</span>
+    </label>`).join("");
+  const updateCount = () => {
+    const checked = [...$("menuBarProviders").querySelectorAll("input:checked")];
+    $("menuBarProviderCount").textContent = `Đã chọn ${checked.length}/3`;
+  };
+  $("menuBarProviders").querySelectorAll("input").forEach((input) => {
+    input.onchange = () => {
+      const checked = [...$("menuBarProviders").querySelectorAll("input:checked")];
+      if (checked.length > 3) {
+        input.checked = false;
+        toast("Chỉ có thể ghim tối đa 3 agent");
+      }
+      updateCount();
+    };
+  });
+  updateCount();
 }
 
 function applyUiScale(value) {
@@ -195,10 +221,9 @@ function collectSettings() {
     appUiScale: Number($("appUiScale").value),
     animationsEnabled: $("animationsEnabled").checked,
     privacyMode: $("privacyMode").checked,
-    notificationsEnabled: $("notificationsEnabled").checked,
-    agentNotifications: $("agentNotifications").checked,
     smartAlertsEnabled: $("smartAlertsEnabled").checked,
     quotaThreshold: Number($("quotaThreshold").value),
+    menuBarProviders: [...$("menuBarProviders").querySelectorAll("input:checked")].map((input) => input.value),
     launchAtStartup: $("launchAtStartup").checked,
     checkUpdatesOnStartup: $("checkUpdatesOnStartup").checked,
   };
@@ -265,10 +290,6 @@ $("closeSettings").onclick = cancelSettings;
 $("cancelSettings").onclick = cancelSettings;
 $("settingsDialog").addEventListener("cancel", () => applyUiScale(appSettings?.appUiScale ?? 1));
 $("saveSettings").onclick = saveSettings;
-$("testNotification").onclick = async () => {
-  try { await invoke("send_test_notification"); toast("Đã gửi thông báo thử"); }
-  catch (error) { toast(String(error)); }
-};
 $("checkUpdates").onclick = () => checkUpdates(true);
 $("openRelease").onclick = () => invoke("open_release_page");
 $("appUiScale").onchange = () => applyUiScale($("appUiScale").value);

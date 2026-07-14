@@ -61,3 +61,4 @@
 .pet-app[data-animations="off"] .approval-mark,
 .pet-app[data-animations="off"] .pet-ear{animation:none!important}
 .activity-bubble:after{display:none}
+.activity-bubble[data-status="quota_warning"] .bubble-status{background:var(--accent-dark);color:#fff}
