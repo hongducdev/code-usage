@@ -1,0 +1,1 @@
+﻿.local-presence{display:flex;align-items:center;gap:6px;margin:0 14px 12px;padding:8px 10px;border-radius:8px;background:#e4f0e7;color:#42634d;font-size:9px}.local-presence>span{color:var(--success);font-size:7px}.local-presence strong{color:#2f6040}.local-presence small{max-width:135px;margin-left:auto;overflow:hidden;color:#5e7766;text-overflow:ellipsis;white-space:nowrap}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeUsage</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="local.css" />
+  <link rel="stylesheet" href="details.css" />
+</head>
+<body>
+  <header data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region><span class="logo" aria-hidden="true">C</span><span data-tauri-drag-region>CodeUsage</span></div>
+    <div class="window-actions"><button id="petToggleButton" title="Hiện hoặc ẩn Agent Pet">Agent pet</button><button id="settingsButton" title="Cài đặt API key">Cài đặt</button><button id="hideButton" title="Ẩn cửa sổ">Ẩn</button></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">Tổng quan sử dụng</p><h1>Quota của bạn,<br><span>trong một nhịp nhìn.</span></h1></div>
+      <button id="refreshButton" class="refresh" aria-label="Làm mới tất cả" title="Làm mới tất cả"><span aria-hidden="true">↻</span></button>
+    </section>
+    <div class="summary" aria-label="Tóm tắt"><div><strong id="readyCount">0</strong><small>Đang theo dõi</small></div><div><strong id="attentionCount">0</strong><small>Cần thiết lập</small></div><div><strong id="lastRefresh">Chưa có</strong><small>Lần làm mới</small></div></div>
+    <nav aria-label="Lọc nhà cung cấp"><button class="active" data-filter="all">Tất cả</button><button data-filter="ready">Hoạt động</button><button data-filter="attention">Cần thiết lập</button></nav>
+    <section id="providerList" class="providers loading-state" aria-live="polite" aria-busy="true">
+      <div class="provider skeleton" aria-label="Đang tải dữ liệu"><i></i><span></span><small></small></div>
+      <div class="provider skeleton" aria-hidden="true"><i></i><span></span><small></small></div>
+      <div class="provider skeleton" aria-hidden="true"><i></i><span></span><small></small></div>
+    </section>
+  </main>
+  <dialog id="settingsDialog">
+    <div class="dialog-head"><div><p class="eyebrow">Kho thông tin bảo mật</p><h2>API keys</h2></div><button id="closeSettings" aria-label="Đóng">×</button></div>
+    <p class="muted">Key được lưu trong kho mật khẩu của hệ điều hành, không ghi vào project.</p>
+    <label>OpenRouter <input id="openrouterKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" /></label>
+    <label>Z.ai <input id="zaiKey" type="password" placeholder="API key" autocomplete="off" /></label>
+    <div class="dialog-actions"><button id="clearKeys" class="ghost">Xóa key</button><button id="saveKeys" class="primary">Lưu an toàn</button></div>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Pet</title>
+  <link rel="stylesheet" href="pet.css" />
+</head>
+<body>
+  <div id="petApp" class="pet-app" data-state="collapsed" data-mode="idle" data-provider="codex">
+    <section class="compact" aria-label="Agent Pet">
+      <button id="petButton" class="pet" aria-label="Mở danh sách agent" aria-expanded="false">
+        <span class="pet-shadow" aria-hidden="true"></span>
+        <span class="pet-body codex-pet" aria-hidden="true">
+          <span class="pet-ear left"></span><span class="pet-ear right"></span>
+          <span class="pet-face"><i></i><i></i><b></b></span>
+          <span class="pet-signal"></span>
+        </span>
+        <span class="claude-pet" aria-hidden="true">
+          <svg viewBox="0 0 18 12" shape-rendering="crispEdges" fill="currentColor">
+            <rect x="3" y="0" width="12" height="2.4"></rect><rect x="3" y="2.4" width="2" height="2.4"></rect><rect x="6" y="2.4" width="6" height="2.4"></rect><rect x="13" y="2.4" width="2" height="2.4"></rect><rect x="1" y="4.8" width="16" height="2.4"></rect><rect x="3" y="7.199999999999999" width="12" height="2.4"></rect><rect x="4" y="9.6" width="1" height="2.4"></rect><rect x="6" y="9.6" width="1" height="2.4"></rect><rect x="11" y="9.6" width="1" height="2.4"></rect><rect x="13" y="9.6" width="1" height="2.4"></rect>
+          </svg>
+        </span>
+        <span class="approval-mark" aria-hidden="true">!</span>
+        <span id="agentCount" class="agent-count" aria-label="0 agent đang chạy">0</span>
+      </button>
+      <p id="compactLabel">Đang nghỉ</p>
+    </section>
+
+    <section class="panel" aria-label="Tiến trình agent">
+      <header data-tauri-drag-region>
+        <div data-tauri-drag-region>
+          <span class="panel-kicker" data-tauri-drag-region>Agent Pet</span>
+          <h1 id="panelTitle" data-tauri-drag-region>Không có agent đang chạy</h1>
+        </div>
+        <div class="panel-actions">
+          <button id="openMain" title="Mở CodeUsage" aria-label="Mở CodeUsage">C</button>
+          <button id="collapseButton" title="Thu gọn" aria-label="Thu gọn">↓</button>
+          <button id="hidePet" title="Ẩn pet" aria-label="Ẩn pet">×</button>
+        </div>
+      </header>
+
+      <div class="overview">
+        <div id="miniPet" class="mini-pet" aria-hidden="true"><i></i><i></i><b></b></div>
+        <div><strong id="activeCount">0</strong><span>đang hoạt động</span></div>
+        <div><strong id="recentCount">0</strong><span>cập nhật gần đây</span></div>
+      </div>
+
+      <nav aria-label="Lọc agent">
+        <button class="active" data-filter="all">Tất cả</button>
+        <button data-filter="active">Đang chạy</button>
+        <button data-filter="recent">Gần đây</button>
+      </nav>
+
+      <div id="agentList" class="agent-list" aria-live="polite" aria-busy="true">
+        <div class="agent-skeleton"><i></i><span></span><small></small></div>
+        <div class="agent-skeleton"><i></i><span></span><small></small></div>
+      </div>
+      <footer><span id="scanStatus">Đang quét phiên cục bộ</span><div><button id="petStyleButton">Pet: tự động</button><button id="refreshAgents">Làm mới</button></div></footer>
+    </section>
+  </div>
+  <script src="pet.js"></script>
+</body>
+</html>
