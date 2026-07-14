@@ -17,7 +17,7 @@ use tauri::{
 const PET_COLLAPSED_WIDTH: u32 = 116;
 const PET_COLLAPSED_HEIGHT: u32 = 132;
 const PET_EXPANDED_WIDTH: u32 = 376;
-const PET_EXPANDED_HEIGHT: u32 = 540;
+const PET_EXPANDED_HEIGHT: u32 = 276;
 
 struct AppState {
     dashboard: Mutex<Dashboard>,
@@ -149,14 +149,24 @@ fn resize_pet_window(window: &tauri::WebviewWindow, expanded: bool) -> Result<()
     let (width, height) = pet_physical_size(window, expanded);
     let right = position.x + current_size.width as i32;
     let bottom = position.y + current_size.height as i32;
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or("Không tìm thấy màn hình")?;
+    let work = monitor.work_area();
+    let min_x = work.position.x;
+    let min_y = work.position.y;
+    let max_x = work.position.x + work.size.width as i32 - width as i32;
+    let max_y = work.position.y + work.size.height as i32 - height as i32;
+    let x = (right - width as i32).clamp(min_x, max_x.max(min_x));
+    let y = (bottom - height as i32).clamp(min_y, max_y.max(min_y));
     window
         .set_size(PhysicalSize::new(width, height))
         .map_err(|error| error.to_string())?;
     window
-        .set_position(PhysicalPosition::new(
-            right - width as i32,
-            bottom - height as i32,
-        ))
+        .set_position(PhysicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
     Ok(())
 }
